@@ -8,8 +8,11 @@ import {
   IoCallOutline,
   IoCopyOutline,
   IoCheckmarkOutline,
+  IoSendOutline,
+  IoChatbubblesOutline,
 } from "react-icons/io5";
 import usePeer from "../hooks/usePeer";
+import useSocket from "../hooks/useSocket";
 import api from "../utils/api";
 
 function Room() {
@@ -19,14 +22,19 @@ function Room() {
   const userName = location.state?.userName || "Guest";
 
   const { peerId, connected, call, onIncomingCall } = usePeer();
+  const { sendMessage, onMessage } = useSocket(roomId);
   const localVideoRef = useRef(null);
   const localStreamRef = useRef(null);
+  const chatEndRef = useRef(null);
 
-  const [remoteStreams, setRemoteStreams] = useState([]); // { peerId, stream }
+  const [remoteStreams, setRemoteStreams] = useState([]);
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [copied, setCopied] = useState(false);
   const [room, setRoom] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [msgInput, setMsgInput] = useState("");
+  const [chatOpen, setChatOpen] = useState(true);
 
   // Get local media
   useEffect(() => {
@@ -67,7 +75,7 @@ function Room() {
     if (!room || !peerId || !localStreamRef.current) return;
 
     room.participants.forEach((p) => {
-      if (p.peerId === peerId) return; // skip self
+      if (p.peerId === peerId) return;
       const outgoing = call(p.peerId, localStreamRef.current);
       if (outgoing) {
         outgoing.on("stream", (remoteStream) => {
@@ -89,6 +97,19 @@ function Room() {
     });
   }, [connected, onIncomingCall]);
 
+  // Listen for chat messages
+  useEffect(() => {
+    const unsub = onMessage((msg) => {
+      setMessages((prev) => [...prev, msg]);
+    });
+    return unsub;
+  }, [onMessage]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const addRemoteStream = useCallback((remotePeerId, stream) => {
     setRemoteStreams((prev) => {
       if (prev.find((s) => s.peerId === remotePeerId)) return prev;
@@ -96,7 +117,6 @@ function Room() {
     });
   }, []);
 
-  // Toggle mic
   const toggleMic = () => {
     const audioTrack = localStreamRef.current?.getAudioTracks()[0];
     if (audioTrack) {
@@ -105,7 +125,6 @@ function Room() {
     }
   };
 
-  // Toggle camera
   const toggleCam = () => {
     const videoTrack = localStreamRef.current?.getVideoTracks()[0];
     if (videoTrack) {
@@ -114,17 +133,22 @@ function Room() {
     }
   };
 
-  // Leave room
   const leaveRoom = () => {
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
     navigate("/");
   };
 
-  // Copy room ID
   const copyRoomId = () => {
     navigator.clipboard.writeText(roomId);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!msgInput.trim()) return;
+    sendMessage(roomId, msgInput.trim(), userName);
+    setMsgInput("");
   };
 
   const totalVideos = 1 + remoteStreams.length;
@@ -136,88 +160,131 @@ function Room() {
       : "grid-cols-3";
 
   return (
-    <div className="min-h-screen bg-gray-900 flex flex-col">
+    <div className="h-screen bg-gray-900 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 bg-gray-800">
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-800 shrink-0">
         <div>
-          <h1 className="text-white font-semibold">{room?.name || "Room"}</h1>
+          <h1 className="text-white font-semibold text-sm">{room?.name || "Room"}</h1>
           <button
             onClick={copyRoomId}
             className="flex items-center gap-1 text-gray-400 text-xs hover:text-white transition"
           >
-            {copied ? (
-              <IoCheckmarkOutline className="text-green-400" />
-            ) : (
-              <IoCopyOutline />
-            )}
+            {copied ? <IoCheckmarkOutline className="text-green-400" /> : <IoCopyOutline />}
             {roomId}
           </button>
         </div>
-        <span className="text-gray-400 text-sm">
-          {totalVideos} participant{totalVideos !== 1 && "s"}
-        </span>
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-xs">
+            {totalVideos} participant{totalVideos !== 1 && "s"}
+          </span>
+          <button
+            onClick={() => setChatOpen((o) => !o)}
+            className={`p-2 rounded-lg transition ${chatOpen ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-400 hover:text-white"}`}
+          >
+            <IoChatbubblesOutline className="text-lg" />
+          </button>
+        </div>
       </div>
 
-      {/* Video Grid */}
-      <div className={`flex-1 grid ${gridCols} gap-2 p-4 auto-rows-fr`}>
-        {/* Local Video */}
-        <div className="relative bg-gray-800 rounded-xl overflow-hidden">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            muted
-            playsInline
-            className="w-full h-full object-cover"
-          />
-          <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
-            {userName} (You)
-          </span>
+      {/* Main Content: Video + Chat */}
+      <div className="flex flex-1 min-h-0">
+        {/* Video Section */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className={`flex-1 grid ${gridCols} gap-2 p-3 auto-rows-fr max-h-[calc(100vh-8rem)]`}>
+            {/* Local Video */}
+            <div className="relative bg-gray-800 rounded-lg overflow-hidden">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+              <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                {userName} (You)
+              </span>
+            </div>
+
+            {/* Remote Videos */}
+            {remoteStreams.map(({ peerId: rPeerId, stream }) => (
+              <RemoteVideo key={rPeerId} stream={stream} peerId={rPeerId} />
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-3 py-3 bg-gray-800 shrink-0">
+            <button
+              onClick={toggleMic}
+              className={`p-3 rounded-full transition ${micOn ? "bg-gray-700 text-white hover:bg-gray-600" : "bg-red-600 text-white hover:bg-red-700"}`}
+            >
+              {micOn ? <IoMicOutline className="text-lg" /> : <IoMicOffOutline className="text-lg" />}
+            </button>
+            <button
+              onClick={toggleCam}
+              className={`p-3 rounded-full transition ${camOn ? "bg-gray-700 text-white hover:bg-gray-600" : "bg-red-600 text-white hover:bg-red-700"}`}
+            >
+              {camOn ? <IoVideocamOutline className="text-lg" /> : <IoVideocamOffOutline className="text-lg" />}
+            </button>
+            <button
+              onClick={leaveRoom}
+              className="p-3 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
+            >
+              <IoCallOutline className="text-lg rotate-[135deg]" />
+            </button>
+          </div>
         </div>
 
-        {/* Remote Videos */}
-        {remoteStreams.map(({ peerId: rPeerId, stream }) => (
-          <RemoteVideo key={rPeerId} stream={stream} peerId={rPeerId} />
-        ))}
-      </div>
+        {/* Chat Sidebar */}
+        {chatOpen && (
+          <div className="w-80 bg-gray-800 border-l border-gray-700 flex flex-col shrink-0">
+            <div className="px-4 py-3 border-b border-gray-700">
+              <h2 className="text-white text-sm font-semibold">Chat</h2>
+            </div>
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-4 py-4 bg-gray-800">
-        <button
-          onClick={toggleMic}
-          className={`p-4 rounded-full transition ${
-            micOn
-              ? "bg-gray-700 text-white hover:bg-gray-600"
-              : "bg-red-600 text-white hover:bg-red-700"
-          }`}
-        >
-          {micOn ? (
-            <IoMicOutline className="text-xl" />
-          ) : (
-            <IoMicOffOutline className="text-xl" />
-          )}
-        </button>
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {messages.length === 0 && (
+                <p className="text-gray-500 text-xs text-center mt-4">No messages yet</p>
+              )}
+              {messages.map((msg, i) => {
+                const isMe = msg.sender === userName;
+                return (
+                  <div key={i} className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}>
+                    <span className="text-[10px] text-gray-500 mb-0.5">{msg.sender}</span>
+                    <div
+                      className={`px-3 py-2 rounded-xl max-w-[85%] text-sm break-words ${
+                        isMe ? "bg-indigo-600 text-white rounded-br-sm" : "bg-gray-700 text-gray-200 rounded-bl-sm"
+                      }`}
+                    >
+                      {msg.message}
+                    </div>
+                    <span className="text-[9px] text-gray-600 mt-0.5">
+                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
 
-        <button
-          onClick={toggleCam}
-          className={`p-4 rounded-full transition ${
-            camOn
-              ? "bg-gray-700 text-white hover:bg-gray-600"
-              : "bg-red-600 text-white hover:bg-red-700"
-          }`}
-        >
-          {camOn ? (
-            <IoVideocamOutline className="text-xl" />
-          ) : (
-            <IoVideocamOffOutline className="text-xl" />
-          )}
-        </button>
-
-        <button
-          onClick={leaveRoom}
-          className="p-4 rounded-full bg-red-600 text-white hover:bg-red-700 transition"
-        >
-          <IoCallOutline className="text-xl rotate-[135deg]" />
-        </button>
+            {/* Input */}
+            <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-700 flex gap-2">
+              <input
+                type="text"
+                value={msgInput}
+                onChange={(e) => setMsgInput(e.target.value)}
+                placeholder="Type a message..."
+                className="flex-1 bg-gray-700 text-white text-sm rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-500"
+              />
+              <button
+                type="submit"
+                className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+              >
+                <IoSendOutline className="text-lg" />
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -233,14 +300,14 @@ function RemoteVideo({ stream, peerId }) {
   }, [stream]);
 
   return (
-    <div className="relative bg-gray-800 rounded-xl overflow-hidden">
+    <div className="relative bg-gray-800 rounded-lg overflow-hidden">
       <video
         ref={videoRef}
         autoPlay
         playsInline
         className="w-full h-full object-cover"
       />
-      <span className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+      <span className="absolute bottom-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
         {peerId.slice(0, 8)}
       </span>
     </div>
