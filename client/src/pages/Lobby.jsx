@@ -49,7 +49,7 @@ function Lobby() {
         <h1 className="text-3xl font-bold text-white text-center mb-2">
           PatatoTomato
         </h1>
-        <p className="text-gray-400 text-center mb-8">Video Conference</p>
+        <p className="text-gray-400 text-center mb-8">Chismisan Room</p>
 
         {error && (
           <div className="bg-red-500/20 text-red-400 text-sm rounded-lg p-3 mb-4">

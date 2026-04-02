@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Peer from "peerjs";
 
+const rawHost = (import.meta.env.VITE_PEER_HOST || "localhost").replace(/^https?:\/\//, "").replace(/\/+$/, "");
+
 const PEER_CONFIG = {
-  host: import.meta.env.VITE_PEER_HOST || "localhost",
+  host: rawHost,
   port: Number(import.meta.env.VITE_PEER_PORT || 5001),
   path: "/peerjs/myapp",
   secure: import.meta.env.VITE_PEER_SECURE === "true",
