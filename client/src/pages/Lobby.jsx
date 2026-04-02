@@ -1,7 +1,59 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { IoVideocamOutline, IoEnterOutline } from "react-icons/io5";
 import api from "../utils/api";
+
+const EMOJIS = ["🥔", "🍅", "📹", "🎙️", "💬", "🎉", "✨", "🔥", "👋", "😂", "🤙", "🫡", "💻", "🎧"];
+
+function FloatingEmoji({ emoji, style, onClick }) {
+  return (
+    <span
+      onClick={onClick}
+      className="absolute select-none cursor-pointer transition-transform hover:scale-150 active:scale-[2]"
+      style={{
+        ...style,
+        fontSize: style.fontSize || "2.5rem",
+        animation: `float ${style.duration}s ease-in-out infinite`,
+        animationDelay: `${style.delay}s`,
+        "--dx1": style.dx1 + "px",
+        "--dy1": style.dy1 + "px",
+        "--dx2": style.dx2 + "px",
+        "--dy2": style.dy2 + "px",
+        "--dx3": style.dx3 + "px",
+        "--dy3": style.dy3 + "px",
+        "--r1": style.r1 + "deg",
+        "--r2": style.r2 + "deg",
+        "--r3": style.r3 + "deg",
+      }}
+    >
+      {emoji}
+    </span>
+  );
+}
+
+function generateEmoji(id) {
+  return {
+    id,
+    emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
+    style: {
+      left: `${Math.random() * 90 + 2}%`,
+      top: `${Math.random() * 90 + 2}%`,
+      fontSize: `${Math.random() * 2 + 2}rem`,
+      opacity: Math.random() * 0.4 + 0.2,
+      duration: Math.random() * 6 + 4,
+      delay: Math.random() * 5,
+      dx1: (Math.random() - 0.5) * 60,
+      dy1: (Math.random() - 0.5) * 60,
+      dx2: (Math.random() - 0.5) * 40,
+      dy2: (Math.random() - 0.5) * 40,
+      dx3: (Math.random() - 0.5) * 70,
+      dy3: (Math.random() - 0.5) * 70,
+      r1: (Math.random() - 0.5) * 20,
+      r2: (Math.random() - 0.5) * 20,
+      r3: (Math.random() - 0.5) * 20,
+    },
+  };
+}
 
 function Lobby() {
   const navigate = useNavigate();
@@ -10,6 +62,39 @@ function Lobby() {
   const [joinRoomId, setJoinRoomId] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [emojis, setEmojis] = useState(() =>
+    Array.from({ length: 20 }, (_, i) => generateEmoji(i))
+  );
+
+  // Pop emoji on click — burst into 3 smaller ones, then fade
+  const popEmoji = useCallback((id) => {
+    setEmojis((prev) => {
+      const target = prev.find((e) => e.id === id);
+      if (!target) return prev;
+      const newOnes = Array.from({ length: 3 }, (_, i) => ({
+        ...generateEmoji(Date.now() + i),
+        style: {
+          ...generateEmoji(0).style,
+          left: `${parseFloat(target.style.left) + (Math.random() * 10 - 5)}%`,
+          top: `${parseFloat(target.style.top) + (Math.random() * 10 - 5)}%`,
+          fontSize: "1rem",
+          opacity: 0.5,
+        },
+      }));
+      return [...prev.filter((e) => e.id !== id), ...newOnes];
+    });
+  }, []);
+
+  // Slowly regenerate emojis to keep the background alive
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setEmojis((prev) => {
+        if (prev.length > 30) prev = prev.slice(prev.length - 20);
+        return [...prev, generateEmoji(Date.now())];
+      });
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const createRoom = async () => {
     if (!userName.trim()) return setError("Enter your name");
@@ -44,8 +129,13 @@ function Lobby() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6">
-      <div className="bg-gray-800 rounded-2xl shadow-2xl p-8 max-w-md w-full">
+    <div className="min-h-screen bg-gray-900 flex items-center justify-center p-6 relative overflow-hidden">
+      {/* Floating Emojis Background */}
+      {emojis.map(({ id, emoji, style }) => (
+        <FloatingEmoji key={id} emoji={emoji} style={style} onClick={() => popEmoji(id)} />
+      ))}
+
+      <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl shadow-2xl p-8 max-w-md w-full relative z-10">
         <h1 className="text-3xl font-bold text-white text-center mb-2">
           PatatoTomato
         </h1>

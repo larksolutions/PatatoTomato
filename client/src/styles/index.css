@@ -1,3 +1,18 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes float {
+  0%, 100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(var(--dx1, 20px), var(--dy1, -20px)) rotate(var(--r1, 5deg));
+  }
+  50% {
+    transform: translate(var(--dx2, -15px), var(--dy2, 10px)) rotate(var(--r2, -3deg));
+  }
+  75% {
+    transform: translate(var(--dx3, 25px), var(--dy3, -25px)) rotate(var(--r3, 2deg));
+  }
+}
