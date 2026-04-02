@@ -1,0 +1,15 @@
+{
+  "name": "patatotomato",
+  "version": "1.0.0",
+  "description": "Dynamic MERN Stack Boilerplate",
+  "scripts": {
+    "setup": "node setup.js",
+    "install:all": "cd server && npm install && cd ../client && npm install",
+    "dev": "concurrently \"cd server && npm run dev\" \"cd client && npm run dev --host\"",
+    "start": "cd server && npm start",
+    "build": "cd client && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
